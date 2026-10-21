@@ -22,7 +22,6 @@ io.on('connection', (socket) => {
     if (children[code]) {
       children[code].battery = battery;
       children[code].location = location;
-      // Jar parent connect asel tar tyala live update pathva
       socket.to(`room_${code}`).emit('parent_received_status', { battery, location });
     }
   });
@@ -31,9 +30,7 @@ io.on('connection', (socket) => {
   socket.on('connect_parent', (code) => {
     if (children[code]) {
       socket.join(`room_${code}`);
-      // Child la kalva ki parent aala
       io.to(children[code].socketId).emit('parent_connected');
-      // Parent la success sanga sobat battery & location dya
       socket.emit('parent_auth_success', {
         success: true,
         battery: children[code].battery,
@@ -41,8 +38,8 @@ io.on('connection', (socket) => {
       });
       console.log(`Parent paired with ${code}`);
     } else {
-      // Wrong code aslyas reject kara
-      socket.emit('parent_auth_error', 'Invalid code or Child device offline');
+      // Chukicha number aslyas error dakhva
+      socket.emit('parent_auth_error', 'Invalid pairing code or child is offline');
     }
   });
 
