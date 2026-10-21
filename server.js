@@ -4,44 +4,61 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { maxHttpBufferSize: 1e8 }); // मोठ्या इमेज फाईल्ससाठी बफर साईझ वाढवली
+const io = new Server(server, { cors: { origin: '*' } });
 
-const activeChildren = {}; 
+const children = {}; // { pairingCode: { socketId, battery, location } }
 
 io.on('connection', (socket) => {
-    
-    socket.on('registerChild', (data) => { 
-        socket.join(data.email);
-        socket.email = data.email;
-        socket.isChild = true;
-        if (!activeChildren[data.email]) activeChildren[data.email] = [];
-        activeChildren[data.email] = activeChildren[data.email].filter(c => c.id !== socket.id);
-        activeChildren[data.email].push({ id: socket.id, name: data.name });
-        socket.to(data.email).emit('updateChildrenList', activeChildren[data.email]);
-    });
+  // Child register hoto
+  socket.on('register_child', (code) => {
+    children[code] = { socketId: socket.id, battery: null, location: null };
+    socket.pairingCode = code;
+    console.log(`Child registered: ${code}`);
+  });
 
-    socket.on('registerParent', (email) => {
-        socket.join(email);
-        if (activeChildren[email]) socket.emit('updateChildrenList', activeChildren[email]);
-    });
+  // Child kadun Battery ani Location updates
+  socket.on('child_status_update', (data) => {
+    const { code, battery, location } = data;
+    if (children[code]) {
+      children[code].battery = battery;
+      children[code].location = location;
+      // Jar parent connect asel tar tyala live update pathva
+      socket.to(`room_${code}`).emit('parent_received_status', { battery, location });
+    }
+  });
 
-    // ऑडिओ आणि व्हिडिओ चालू/बंद करण्याच्या कमांड्स
-    socket.on('startRecording', (childId) => socket.to(childId).emit('startRecording'));
-    socket.on('stopRecording', (childId) => socket.to(childId).emit('stopRecording'));
-    
-    socket.on('startVideo', (childId) => socket.to(childId).emit('startVideo'));
-    socket.on('stopVideo', (childId) => socket.to(childId).emit('stopVideo'));
+  // Parent connect kartana verification
+  socket.on('connect_parent', (code) => {
+    if (children[code]) {
+      socket.join(`room_${code}`);
+      // Child la kalva ki parent aala
+      io.to(children[code].socketId).emit('parent_connected');
+      // Parent la success sanga sobat battery & location dya
+      socket.emit('parent_auth_success', {
+        success: true,
+        battery: children[code].battery,
+        location: children[code].location
+      });
+      console.log(`Parent paired with ${code}`);
+    } else {
+      // Wrong code aslyas reject kara
+      socket.emit('parent_auth_error', 'Invalid code or Child device offline');
+    }
+  });
 
-    // डेटा ट्रान्सफर
-    socket.on('audioStream', (data) => socket.to(data.email).emit('audioPlay', data.audioChunk));
-    socket.on('videoStream', (data) => socket.to(data.email).emit('videoFrame', data.frame)); 
+  // Audio chunk forwarding
+  socket.on('audio_chunk', (data) => {
+    socket.to(`room_${data.code}`).emit('audio_stream', data.data);
+  });
 
-    socket.on('disconnect', () => {
-        if (socket.isChild && socket.email && activeChildren[socket.email]) {
-            activeChildren[socket.email] = activeChildren[socket.email].filter(c => c.id !== socket.id);
-            socket.to(socket.email).emit('updateChildrenList', activeChildren[socket.email]);
-        }
-    });
+  socket.on('disconnect', () => {
+    if (socket.pairingCode && children[socket.pairingCode]) {
+      io.to(`room_${socket.pairingCode}`).emit('child_disconnected');
+      delete children[socket.pairingCode];
+      console.log(`Child removed: ${socket.pairingCode}`);
+    }
+  });
 });
 
-server.listen(3000, () => console.log('Server Running with Video Support'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
