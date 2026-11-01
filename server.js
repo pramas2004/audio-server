@@ -13,8 +13,9 @@ app.get('/', (req, res) => {
 
 const children = {}; // { pairingCode: { socketId, battery, location } }
 
-io.on('connection', (socket) => {
-  console.log(`Connected: ${socket.id}`);
+socket.on('toggle_audio_stream', (data) => {
+  socket.to(`room_${data.code}`).emit('toggle_audio_stream', data);
+});
 
   // Child register hoto
   socket.on('register_child', (code) => {
