@@ -68,3 +68,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Parent कडून streaming चालू/बंद करण्याची विनंती Child ला पाठवा
+  socket.on('toggle_audio_stream', (data) => {
+    socket.to(`room_${data.code}`).emit('toggle_audio_stream', data);
+  });
